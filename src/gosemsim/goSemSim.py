@@ -126,7 +126,7 @@ def goPPI(ptable,htable, hgenes, pgenes, method, score, threshold):
     
     pquery = "SELECT * FROM {} WHERE gene IN {}  ".format(ptable,pt)
     presult = conn.execute(pquery).fetchall()
-    pathogen_results = pd.DataFrame(presult, columns=['id', 'gene', 'term'])
+    pathogen_results = pd.DataFrame(presult, columns=['id', 'gene', 'te rm'])
 
     final = []
     for line in host_results.values.tolist():

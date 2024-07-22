@@ -7,12 +7,10 @@ const getPPI = async (method, hspecies, pspecies, identity, coverage, evalue, pi
 
   // Build the command arguments for the script
   const commandArgs = [
-    "/opt/miniconda3/envs/ml-gpu/bin/python3",
-    // "python3",
-    "/home/dock_user/web/hpinetdb/hpinetbackend/src/introlog/hpinterolog.py",
-    // "/home/naveen/Desktop/hpinet/hpinetbackend/src/introlog/hpinterolog.py",
+    "/home/davidg/envs/hucovaria/bin/python",
+    "/home/davidg/repos/hpinetbackend/src/introlog/hpinterolog.py",
     "--method", method,
-    "--blastdb", "/home/dock_user/hpinetblast.db",
+    "--blastdb", "/home/davidg/repos/hpinetbackend/apinetblast.db",
     "--ppidb", "ppidb",
     "--host_table", hspecies.toLowerCase(),
     "--pathogen_table", pspecies,
@@ -51,7 +49,6 @@ const getPPI = async (method, hspecies, pspecies, identity, coverage, evalue, pi
 
   return new Promise((resolve, reject) => {
     getS.stdout.on('end', async function (code) {
-
         const resultData = output.replace(/\n$/, "");;
             
             resolve(resultData);

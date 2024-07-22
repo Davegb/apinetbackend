@@ -70,7 +70,6 @@ def filter_blast(db,table,ident, cov, evalue,intdb,genes=None):
     else:
         query = "SELECT * FROM {} WHERE pident >= {} AND evalue <= {} AND qcovs >= {} AND intdb = '{}'; ".format(table, ident, evalue, cov, intdb)
         results = db.execute(query).fetchall()
-    # print(results)
 
     if len(results)>0:
            
@@ -106,10 +105,8 @@ def ppi(intdb, pathogendf, hostdf):
     # define query here
     query = "SELECT * FROM {} WHERE ProteinA IN {}  AND ProteinB IN {} OR ProteinB IN {}  AND ProteinA IN {}".format(intdb,ht,pt,ht,pt)
     result = conn.execute(query).fetchall()
-    
   
     results = pd.DataFrame(result, columns=['ID', 'ProteinA', 'ProteinB', 'Method', 'Type', 'Confidence', 'PMID'])
-
 
     # For host as interactor A and Pathogen as Interactor B
 
@@ -147,7 +144,6 @@ def ppi(intdb, pathogendf, hostdf):
 
 def filter_domain( table, idt =None, genes=None, domdb=None):
     mydb = create_connection("/home/dock_user/hpinet_domain.db")
- 
 
     if genes !=None:
         
@@ -212,7 +208,6 @@ def main():
     domt = options.domdb.replace(' ','').split(",")
 
     domtables = tuple([word.upper() for word in domt])
-    # print(options.genes)
     if options.genes:
         genes = open(os.path.join(os.getcwd(), "src/genes.txt")).readlines()[0]
     
@@ -228,11 +223,10 @@ def main():
     
     if options.method == 'interolog':
         for hpd in intTables:
-
             host_blast = filter_blast(options.blastdb,options.hosttable,options.hi,options.hc,options.he,hpd, genes=hproteins)
             pathogen_blast = filter_blast(options.blastdb,options.pathogentable,options.pi,options.pc,options.pe,hpd, genes=pproteins)
             
-            hd =hpd+'s'
+            hd = hpd
             
         
             if  isinstance(pathogen_blast, pd.DataFrame) and isinstance(host_blast, pd.DataFrame):
@@ -242,7 +236,6 @@ def main():
             
         try:
             final = pd.concat(results_list.values(),ignore_index=True)
-           
             final.reset_index(inplace=True, drop=True)
             rid = add_results(final.to_dict('records'))
             print(rid)
@@ -259,11 +252,9 @@ def main():
             domain_result = filter_domain(table, domdb=domtables)
         
         elif hproteins !=None and pproteins==None:
-
             domain_result = filter_domain( table, idt = options.idt, genes=hproteins,domdb=domtables)
 
         elif hproteins ==None and pproteins !=None:
-
             domain_result = filter_domain( table, idt = options.idt, genes=pproteins,domdb=domtables)
 
         for hpd in intTables:
