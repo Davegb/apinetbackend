@@ -10,9 +10,9 @@ const EffectorSchema = new mongoose.Schema({
     
 });
 
-const resultsdb = mongoose.connection.useDb("hpinetdb")
+const resultsdb = mongoose.connection.useDb("apinetdb")
 
-const EffectorPathogens = resultsdb.model('effector_pathogens', EffectorSchema)
+const EffectorPathogens = resultsdb.model('effector_secretory_proteins', EffectorSchema)
 
 module.exports ={
     

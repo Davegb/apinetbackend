@@ -72,7 +72,6 @@ def filter_blast(db,table,ident, cov, evalue,intdb,genes=None):
         results = db.execute(query).fetchall()
 
     if len(results)>0:
-           
         df = pd.DataFrame(results, columns=['id', 'qseqid', 'sseqid', 'pident','evalue', 'qcov', 'intdb'])
                   
     else:
@@ -82,7 +81,7 @@ def filter_blast(db,table,ident, cov, evalue,intdb,genes=None):
 
 
 def ppi(intdb, pathogendf, hostdf):  
-    conn = create_connection('ppidb.db')
+    conn = create_connection('/home/kaabil/apinetdbs/ppi.sqlite')
    
     pathogen_list = pathogendf['sseqid'].values.tolist()
     host_list = hostdf['sseqid'].values.tolist()
@@ -143,7 +142,7 @@ def ppi(intdb, pathogendf, hostdf):
     return final_results
 
 def filter_domain( table, idt =None, genes=None, domdb=None):
-    mydb = create_connection("/home/dock_user/hpinet_domain.db")
+    mydb = create_connection("/home/kaabil/apinetdbs/domain.sqlite")
 
     if genes !=None:
         
@@ -157,18 +156,21 @@ def filter_domain( table, idt =None, genes=None, domdb=None):
 
         if idt !=None:
             if  idt =='host':
-                query = "SELECT * FROM {} WHERE Host_Protein IN {} AND intdb IN {};".format(table,ht, domdb)
+                query = "SELECT * FROM {} WHERE host IN {} AND intdb IN {};".format(table,ht, domdb)
                 results = mydb.execute(query).fetchall()
             if  idt =='pathogen':
-                query = "SELECT * FROM {} WHERE Pathogen_Protein IN {} AND intdb IN {};".format(table,ht, domdb)
+                query = "SELECT * FROM {} WHERE pathogen IN {} AND intdb IN {};".format(table,ht, domdb)
                 results = mydb.execute(query).fetchall()
     else:
         query = "SELECT * FROM {} WHERE intdb IN {};".format(table, domdb)
+        print(query)
 
         results = mydb.execute(query).fetchall()
 
     df= pd.DataFrame(results)
 
+    print(df)
+    
     df.columns = ['id', 'Host_Protein', 'Pathogen_Protein', 'ProteinA', 'ProteinB', 'Score', 'DomainA_name', 'DomainA_desc', 'DomainA_interpro', 'DomainB_name', 'DomainB_desc', 'DomainB_interpro', 'intdb']
     
     dk = df[['Host_Protein', 'Pathogen_Protein', 'ProteinA', 'ProteinB', 'Score', 'DomainA_name', 'DomainA_desc', 'DomainA_interpro', 'DomainB_name', 'DomainB_desc', 'DomainB_interpro', 'intdb']]
@@ -243,10 +245,14 @@ def main():
             rid = add_noresults("no results")
             print(rid)
 
-    if options.method == 'consensus':
+    elif options.method == "domain":
         hspecies = options.hosttable.split("_")[1]
         pspecies = options.pathogentable.split("_")[1]
-        table = f"{hspecies}_{pspecies}_domains"
+
+    elif options.method == 'consensus':
+        hspecies = options.hosttable.split("_")[1]
+        pspecies = options.pathogentable.split("_")[1]
+        table = f"{hspecies}_{pspecies}"
 
         if hproteins == None and pproteins == None:
             domain_result = filter_domain(table, domdb=domtables)

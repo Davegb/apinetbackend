@@ -14,7 +14,7 @@ const GOSchema = new mongoose.Schema({
 
 
 
-const resultsdb = mongoose.connection.useDb("hpinetdb")
+const resultsdb = mongoose.connection.useDb("apinetdb")
 const GOHosts = resultsdb.model('go_hosts', GOSchema)
 const GOPathogens = resultsdb.model('go_pathogens', GOSchema)
 

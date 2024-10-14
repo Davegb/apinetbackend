@@ -9,7 +9,7 @@ const KEGGSchema = new mongoose.Schema({
     
 });
 
-const resultsdb = mongoose.connection.useDb("hpinetdb")
+const resultsdb = mongoose.connection.useDb("apinetdb")
 const KEGGAestivums = resultsdb.model('kegg_hosts', KEGGSchema)
 const KEGGTurgidums = resultsdb.model('kegg_pathogens', KEGGSchema)
 

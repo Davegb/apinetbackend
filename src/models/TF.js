@@ -8,7 +8,7 @@ const TFSchema = new mongoose.Schema({
     
 });
 
-const resultsdb = mongoose.connection.useDb("hpinetdb")
+const resultsdb = mongoose.connection.useDb("apinetdb")
 const TFAestivums = resultsdb.model('tf_hosts', TFSchema)
 
 

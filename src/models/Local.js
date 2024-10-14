@@ -8,7 +8,7 @@ const LocalSchema = new mongoose.Schema({
     
 });
 
-const resultsdb = mongoose.connection.useDb("hpinetdb")
+const resultsdb = mongoose.connection.useDb("apinetdb")
 const LocalHosts = resultsdb.model('local_hosts', LocalSchema)
 const LocalPathogens = resultsdb.model('local_pathogens', LocalSchema)
 

@@ -1,4 +1,4 @@
-        const mongoose = require('mongoose');
+const mongoose = require('mongoose');
 
 const InterproSchema = new mongoose.Schema({
 
@@ -14,7 +14,7 @@ const InterproSchema = new mongoose.Schema({
     
 });
 
-const resultsdb = mongoose.connection.useDb("hpinetdb")
+const resultsdb = mongoose.connection.useDb("apinetdb")
 const InterproAestivums = resultsdb.model('interpro_hosts', InterproSchema)
 const InterproPathogens = resultsdb.model('interpro_pathogens', InterproSchema)
 

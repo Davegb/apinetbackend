@@ -7,6 +7,7 @@ import Levenshtein
 from pymongo import MongoClient
 import time
 import argparse
+import fnmatch
 
 def list_of_strings(arg):
     return(arg.split(","))
@@ -33,6 +34,18 @@ parser.add_argument("--pi", dest='pi',type=int, help="Pathogen identitiy for bla
 parser.add_argument("--pc", dest='pc',type=int, help="Pathogen coverage for blast filter")
 parser.add_argument("--pe", dest='pe', type=float, help="Pathogen evalue for blast filter")
 
+def glob_case_insensitive(pattern):
+    # Get the list of all files and directories in the directory of the pattern
+    directory = os.path.dirname(pattern)
+    if not directory:
+        directory = '.'
+    # Extract the base name pattern
+    base_pattern = os.path.basename(pattern)
+    # Use glob to list all files in the directory
+    all_files = glob.glob(os.path.join(directory, '*'))
+    # Use fnmatch with case-insensitive matching to filter the files
+    matched_files = [f for f in all_files if fnmatch.fnmatchcase(os.path.basename(f).lower(), base_pattern.lower())]
+    return matched_files
 
 def get_sequences(hgenes,pgenes, host, pathogen):
     hostIDs =[]
@@ -42,15 +55,18 @@ def get_sequences(hgenes,pgenes, host, pathogen):
     pattern_host={}
     pattern_pathogen= {}
     
+    host_file = glob_case_insensitive(host)[0]
+    pathogen_file = glob_case_insensitive(pathogen)[0]
+
     with open(f"{host}_temp.fa",'w') as fp:
-        host_fastas =SeqIO.parse(host,'fasta')
+        host_fastas = SeqIO.parse(host_file,'fasta')
         for hf in host_fastas:
             if hf.id in hgenes:
                 fp.write(f">{hf.id}\n{hf.seq}\n")
                 numberHost +=1
                 hostIDs.append(hf.id)
     with open(f"{pathogen}_temp.fa",'w') as fp:
-        pathogen_fastas =SeqIO.parse(pathogen,'fasta')
+        pathogen_fastas =SeqIO.parse(pathogen_file,'fasta')
         for pf in pathogen_fastas:
             if pf.id in pgenes:
                 fp.write(f">{pf.id}\n{pf.seq}\n")
@@ -65,24 +81,23 @@ def get_sequences(hgenes,pgenes, host, pathogen):
     return hostIDs, pathogenIDs, numberHost, numberPathogen, pattern_host, pattern_pathogen
 
 def select_pool(pool):
-    
     if pool =='UP82':
-        df = pd.read_csv("src/phylo/modelPool.txt", sep="\t", names=['genome'])
+        df = pd.read_csv("/home/kaabil/apinetdbs/phylo/modelPool.txt", sep="\t", names=['genome'])
         poolList= df['genome'].values.tolist()
         genomeNumber = len(poolList)
-        poolFolder = "src/phylo/dbs/phyloModelSC"
+        poolFolder = "/home/kaabil/apinetdbs/phylo/up82"
         nullPool  = "0000000000000000000000000000000000000000000000000000000000000000000000000000000000"
     if pool == 'BC18':
-        df = pd.read_csv("src/phylo/bioconductorPool.txt", sep="\t", names=['genome'])
+        df = pd.read_csv("/home/kaabil/apinetdbs/phylo/bioconductorPool.txt", sep="\t", names=['genome'])
         poolList= df['genome'].values.tolist()
         genomeNumber = len(poolList)
-        poolFolder = "src/phylo/dbs/phyloBioconductor"
-        nullPool  = "000000000000000000"
+        poolFolder = "/home/kaabil/apinetdbs/phylo/bc18"
+        nullPool  = "00000000000000000000"
     if pool == 'protphylo490':
-        df = pd.read_csv("src/phylomodelPool.txt", sep="\t", names=['genome'])
+        df = pd.read_csv("/home/kaabil/apinetdbs/phylo/phylomodelPool.txt", sep="\t", names=['genome'])
         poolList= df['genome'].values.tolist()
         genomeNumber = len(poolList)
-        poolFolder = "src/phylo/dbs/protPhylo"
+        poolFolder = "/home/kaabil/apinetdbs/phylo/protPhylo490"
         nullPool ='0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'
         
     return genomeNumber, poolFolder, poolList, nullPool
@@ -94,16 +109,15 @@ def run_blast(genomeNumber,poolFolder, poolList,host_fasta, pathogen_fasta, eval
         host_files.append(f"{host_fasta_out}_blast_{i}.txt")
         pathogen_files.append(f"{pathogen_fasta_out}_blast_{i}.txt")
         # print(f"working on genome {i}")
-        cmd = f" /opt/miniconda3/envs/ml-gpu/bin/diamond blastp --db {poolFolder}/{poolList[i]} -q {host_fasta} --evalue {evalue} --out {host_fasta_out}_blast_{i}.txt --outfmt 6 qseqid sseqid pident evalue bitscore qcovhsp -k 1 --threads 6"
-        pcmd =f" /opt/miniconda3/envs/ml-gpu/bin/diamond blastp --db {poolFolder}/{poolList[i]} -q {pathogen_fasta} --evalue {pevalue} --out {pathogen_fasta_out}_blast_{i}.txt --outfmt 6 qseqid sseqid pident evalue bitscore qcovhsp -k 1 --threads 6"
-        with open(os.path.join(os.getcwd(), "host.out"), 'w+') as fout:
-            with open(os.path.join(os.getcwd(), "host.err"), 'w+') as ferr:
-                job_id= subprocess.call(cmd, shell=True, stdout=fout,stderr=ferr)
+        # cmd = f" /opt/miniconda3/envs/ml-gpu/bin/diamond blastp --db {poolFolder}/{poolList[i]} -q {host_fasta} --evalue {evalue} --out {host_fasta_out}_blast_{i}.txt --outfmt 6 qseqid sseqid pident evalue bitscore qcovhsp -k 1 --threads 6"
+        # pcmd =f" /opt/miniconda3/envs/ml-gpu/bin/diamond blastp --db {poolFolder}/{poolList[i]} -q {pathogen_fasta} --evalue {pevalue} --out {pathogen_fasta_out}_blast_{i}.txt --outfmt 6 qseqid sseqid pident evalue bitscore qcovhsp -k 1 --threads 6"
+        # with open(os.path.join(os.getcwd(), "host.out"), 'w+') as fout:
+        #     with open(os.path.join(os.getcwd(), "host.err"), 'w+') as ferr:
+        #         job_id= subprocess.call(cmd, shell=True, stdout=fout,stderr=ferr)
 
-        with open(os.path.join(os.getcwd(), "pathogen.out"), 'w+') as fout:
-            with open(os.path.join(os.getcwd(), "pathogen.err"), 'w+') as ferr:
-            
-                job_id = subprocess.call(pcmd, shell=True, stdout=fout,stderr=ferr)
+        # with open(os.path.join(os.getcwd(), "pathogen.out"), 'w+') as fout:
+        #     with open(os.path.join(os.getcwd(), "pathogen.err"), 'w+') as ferr:
+        #         job_id = subprocess.call(pcmd, shell=True, stdout=fout,stderr=ferr)
     return host_files, pathogen_files
 
 def fill_pattern(pattern_host, pattern_pathogen, host_files, pathogen_files, numberHost,hostIDs, numberPathogen, pathogenIDs, hi, hc, pi,pc):
@@ -157,9 +171,11 @@ def get_ppi(numberHost, numberPathogen, pattern_host, pattern_pathogen, nullPool
                 host=hostIDs[i]
                 pathogen=pathogenIDs[k]
                 sim =(genomeNumber - Levenshtein.distance(pattern_host[i], pattern_pathogen[k]))/genomeNumber
-                result.append([host,pathogen,sim, pattern_host[i], pattern_pathogen[k]])
+                # result.append([host,pathogen,sim, pattern_host[i], pattern_pathogen[k]])
+                result.append([host,pathogen,sim])
                 
-    results = pd.DataFrame(result, columns=['Host_Protein', 'Pathogen_Protein', 'Score', 'Host_Pattern', 'Pathogen_Pattern'])
+    # results = pd.DataFrame(result, columns=['Host_Protein', 'Pathogen_Protein', 'Score', 'Host_Pattern', 'Pathogen_Pattern'])
+    results = pd.DataFrame(result, columns=['Host_Protein', 'Pathogen_Protein', 'Score'])
     
     return results
 
@@ -196,8 +212,8 @@ def main():
     
     options, unknownargs = parser.parse_known_args() 
     
-    host = os.path.join(os.getcwd(), 'src/phylo/data/'+ options.host + '.fa')
-    pathogen =os.path.join(os.getcwd(), 'src/phylo/data/'+ options.pathogen + '.fa')
+    host = os.path.join('/home/kaabil/apinetdbs/phylo/data/'+ options.host + '.faa')
+    pathogen =os.path.join('/home/kaabil/apinetdbs/phylo/data/'+ options.pathogen + '.faa')
     hgenes = options.hgenes
     pgenes = options.pgenes
     hi = options.hi
@@ -212,8 +228,8 @@ def main():
     host_fasta = host + "_temp.fa"
     pathogen_fasta = pathogen + "_temp.fa"
 
-    host_fasta_out = os.path.join(os.getcwd(), 'src/phylo/host/'+ options.host)
-    pathogen_fasta_out = os.path.join(os.getcwd(), 'src/phylo/pathogen/'+ options.pathogen)
+    host_fasta_out = os.path.join(f'/home/kaabil/apinetdbs/phylo/host/{pool.lower()}/{options.host}')
+    pathogen_fasta_out = os.path.join(f'/home/kaabil/apinetdbs/phylo/pathogen/{pool.lower()}/{options.pathogen}')
 
     hostIDs, pathogenIDs, numberHost, numberPathogen, pattern_host, pattern_pathogen = get_sequences(hgenes, pgenes,host,pathogen)
     
@@ -225,7 +241,6 @@ def main():
  
     try:
         results = get_ppi(numberHost, numberPathogen, pattern_host, pattern_pathogen, nullPool, hostIDs, pathogenIDs, genomeNumber)
-    
         results['Score'] = results['Score'].apply(custom_to_float)
         results = results[results['Score']>=float(threshold)]
         rid = add_results(results.to_dict('records'))

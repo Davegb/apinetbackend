@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const router = express.Router();
 const getPPI = require("../introlog/introlog");
+const getDomain = require("../domain/domain");
 const GO = require("../models/GO");
 const KEGG = require("../models/KEGG");
 const Interpro = require("../models/Interpro");
@@ -72,8 +73,6 @@ router.route('/ppi').post(async (req, res) => {
 
   const body = JSON.parse(JSON.stringify(req.body));
 
-  console.log(body.keyword)
-  console.log(body.anotType)
   let isgenes;
   
   let genes;
@@ -277,29 +276,40 @@ router.route('/results/').get(async (req, res) => {
     const resultsdb = mongoose.connection.useDb("hpinet_results");
     let ResultsModel;
 
-    if (category === 'interolog') {
-      ResultsModel = resultsdb.model(results, wheatSchema);
-    } else if (category === 'gosim') {
-      ResultsModel = resultsdb.model(results, GOPPISchema);
-    } else if (category === 'phylo') {
-      ResultsModel = resultsdb.model(results, PhyloPPISchema);
-    } else {
-      return res.status(400).json({ error: 'Invalid category' });
+    try {
+      if (category === 'interolog') {
+        ResultsModel = resultsdb.model(results, wheatSchema);
+      } else if (category === 'gosim') {
+        ResultsModel = resultsdb.model(results, GOPPISchema);
+      } else if (category === 'phylo') {
+        ResultsModel = resultsdb.model(results, PhyloPPISchema);
+      } else {
+        return res.status(400).json({ error: 'Invalid category' });
+      }
+
+      const [final, counts, hostProtein, pathogenProtein] = await Promise.all([
+        ResultsModel.find({}).limit(sizeInt).skip(skip).exec(),
+        ResultsModel.countDocuments(),
+        ResultsModel.distinct("Host_Protein"),
+        ResultsModel.distinct("Pathogen_Protein"),
+      ]);
+
+      res.json({
+        results: final,
+        total: counts,
+        hostcount: hostProtein.length,
+        pathogencount: pathogenProtein.length,
+      });
+    } catch(e) { 
+      console.log("An error occurred: " + e);
+      res.json({
+        results: [],
+        error: "There was an error with your query.",
+        total: 0,
+        hostcount: 0,
+        pathogencount: 0,
+      })
     }
-
-    const [final, counts, hostProtein, pathogenProtein] = await Promise.all([
-      ResultsModel.find({}).limit(sizeInt).skip(skip).exec(),
-      ResultsModel.countDocuments(),
-      ResultsModel.distinct("Host_Protein"),
-      ResultsModel.distinct("Pathogen_Protein"),
-    ]);
-
-    res.json({
-      results: final,
-      total: counts,
-      hostcount: hostProtein.length,
-      pathogencount: pathogenProtein.length,
-    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "An error occurred" });
@@ -319,7 +329,8 @@ router.route('/annotation/').get(async (req, res) => {
     pathogen = pathogen.toLocaleLowerCase()
     
     // Perform case-insensitive search for genes and species
-    let hgo_results = await GO['host'].find({ 'species': { $regex: new RegExp(host, 'i') }, 'gene': { $regex: new RegExp('^' + hid + '$', 'i') } });
+    // let hgo_results = await GO['host'].find({ 'species': { $regex: new RegExp(host, 'i') }, 'gene': { $regex: new RegExp('^' + hid + '$', 'i') } });
+    let hgo_results = await GO['host'].find();
     let pgo_results = await GO['pathogen'].find({ 'species': { $regex: new RegExp(pathogen, 'i') }, 'gene': { $regex: new RegExp('^' + pid + '$', 'i') } });
     let hkegg_results = await KEGG['host'].find({ 'species': { $regex: new RegExp(host, 'i') }, 'gene': { $regex: new RegExp('^' + hid + '$', 'i') } });
     let pkegg_results = await KEGG['pathogen'].find({ 'species': { $regex: new RegExp(pathogen, 'i') }, 'gene': { $regex: new RegExp('^' + pid + '$', 'i') } });
@@ -356,6 +367,8 @@ router.route('/annotation/').get(async (req, res) => {
       'hint': hinterpro_results,
       'pint': pinterpro_results
     });
+
+    console.log(res)
   } catch (error) {
     // Handle errors
     console.error('Error:', error);
@@ -448,205 +461,215 @@ router.route('/domain_download/').post(async (req, res) => {
 
 })
 
-router.route('/domain_results/').post(async (req, res) => {
-  try {
-    const body = req.body;
-    const page = parseInt(body.page) || 1;
-    const size = parseInt(body.size) || 10;
-    const table = body.species.toLowerCase() + '_domains';
-    const limit = size;
-    const skip = (page - 1) * size;
-    const resultsdb = mongoose.connection.useDb("hpinetdb");
-    const upresults = mongoose.connection.useDb("hpinet_results");
-    const Results = resultsdb.model(table, DomainSchema);
-    let isgenes;
+router.route('/domain_results').post(async (req, res) => {
+
+  const body = JSON.parse(JSON.stringify(req.body));
+
+  let results = await getDomain(body.species, body.intdb, body.page, body.size)
   
-  
-  let genes; // Initialize genes to an empty string
-  let species;
-
-  if (body.searchType ==='keyword'){
-    
-    if (body.ids ==='host'){
-      species = body.host.toLowerCase()
-    }
-    else{
-      species = body.pathogen.toLowerCase()
-    }
-    console.log(species)
-    if (body.anotType === 'go'){
-      const query = {
-        $or: [
-          
-          { "gene": { $regex: body.keyword, $options: "i"} },
-          { "term": { $regex: body.keyword, $options: "i"} },
-          { "description": { $regex: body.keyword, $options: "i"} },
-          { "definition": { $regex: body.keyword, $options: "i" } },
-          { "evidence": { $regex: body.keyword, $options: "i"} },
-          { "ontology": { $regex: body.keyword, $options: "i" } },
-          
-        ],
-        'species':{$regex: species, $options: "i"}
-      }
-
-      keyword_data = await GO[body.ids].find(query)
-      
-      const geneArray = keyword_data.map(obj => obj.gene);
-      console.log(geneArray.length)
-      genes = geneArray.join(',');
-      
-    }
-    if (body.anotType === 'local'){
-      const query = {
-        $or: [
-          
-          { "gene": { $regex: body.keyword, $options: "i"} },
-          { "location": { $regex: body.keyword, $options: "i"} },
-          
-        ],
-        'species':{$regex: species, $options: "i"}
-      }
-
-      keyword_data = await Local[body.ids].find(query)
-      
-      const geneArray = keyword_data.map(obj => obj.gene);
-      console.log(geneArray.length)
-      genes = geneArray.join(',');
-      
-    }
-    if (body.anotType === 'pathway'){
-      const query = {
-        $or: [
-          
-          { "gene": { $regex: body.keyword, $options: "i"} },
-          { "pathway": { $regex: body.keyword, $options: "i"} },
-          { "description": { $regex: body.keyword, $options: "i"} }
-          
-        ],
-        'species':{$regex: species, $options: "i"}
-      }
-
-      keyword_data = await KEGG[body.ids].find(query)
-      
-      const geneArray = keyword_data.map(obj => obj.gene);
-      console.log(geneArray.length)
-      genes = geneArray.join(',');
-      
-    }
-    if (body.anotType === 'tf'){
-      const query = {
-        $or: [
-          
-          { "gene": { $regex: body.keyword, $options: "i"} },
-          { "tf_family": { $regex: body.keyword, $options: "i"} }
-        
-        ],
-        'species':{$regex: species, $options: "i"}
-      }
-
-      keyword_data = await TF[body.ids].find(query)
-      
-      const geneArray = keyword_data.map(obj => obj.gene);
-      console.log(geneArray.length)
-      genes = geneArray.join(',');
-      
-    }
-
-    if (body.anotType === 'interpro') {
-      const isInteger = Number.isInteger(parseInt(body.keyword));
-      const query = {
-          $or: [
-              { "gene": { $regex: body.keyword, $options: 'i' } },
-              { "interpro_id": { $regex: body.keyword, $options: 'i' } },
-              { "sourcedb": { $regex: body.keyword, $options: 'i' } },
-              { "domain": { $regex: body.keyword, $options: 'i' } },
-              { "domain_description": { $regex: body.keyword, $options: 'i' } }
-          ],
-          'species': { $regex: species, $options: "i" }
-      };
-  
-      if (isInteger) {
-          query.$or.push({ "length": parseInt(body.keyword) });
-      }
-  
-      keyword_data = await Interpro[body.ids].find(query);
-  
-      const geneArray = keyword_data.map(obj => obj.gene);
-      // console.log(geneArray.length);
-      genes = geneArray.join(',');
-  }
-  
-    if (body.anotType === 'virulence'){
-      const query = {
-        $or: [
-          
-          { "gene": { $regex: body.keyword, $options: "i"} },
-          { "description": { $regex: body.keyword, $options: "i"} },
-          { "type": { $regex: body.keyword, $options: "i"} },
-        ],
-        'species':{$regex: species, $options: "i"}
-      }
-
-      keyword_data = await Effector[body.ids].find(query)
-      
-      const geneArray = keyword_data.map(obj => obj.gene);
-      // console.log(geneArray.length)
-      genes = geneArray.join(',');
-      
-    }
-  }
-  else{
-
-    genes = body.genes || ''
-    
-  }
-
-
-    const query = { intdb: { $in: body.intdb } };
-
-    if (genes.length !==0 | body.keyword ) {
-      if (body.idt === 'host') {
-        query.Host_Protein = { $in: genes };
-      } else if (body.idt === 'pathogen') {
-        query.Pathogen_Protein = { $in: genes};
-      }
-    }
-   console.log(query)
-    const [final, counts, hostProtein, pathogenProtein] = await Promise.all([
-      Results.find(query).limit(limit).skip(skip).lean().exec(),
-      Results.count(query),
-      Results.distinct("Host_Protein", query),
-      Results.distinct("Pathogen_Protein", query)
-    ]);
-    
-
-    const timestamp = new Date().getTime(); // Get current timestamp
-    const tableName = `hpinet${timestamp}results`; // Construct table name with timestamp
-    console.log(tableName)
-    // Create a new MongoDB collection with the timestamp-based name
-    const newCollection = upresults.collection(tableName);
-
-  //   const finalArray = Array.isArray(final) ? final : [final];
-
-  //   if (finalArray.some(item => typeof item !== 'object' || item === null)) {
-  //     throw new Error('Invalid document found in final array');
-  // }
-  // console.log(finalArray)
-    // Insert the data into the new collection
-    await newCollection.insertMany(final);
-
-    res.json({
-      results: final,
-      total: counts,
-      hostcount: hostProtein.length,
-      pathogencount: pathogenProtein.length,
-      resultid: tableName
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "An error occurred" });
-  }
+  res.json(results)
 });
+
+// router.route('/domain_results/').post(async (req, res) => {
+//   console.log(req.body)
+//   try {
+//     const body = req.body;
+//     const page = parseInt(body.page) || 1;
+//     const size = parseInt(body.size) || 10;
+//     const table = body.species.toLowerCase() + '_domains';
+//     const limit = size;
+//     const skip = (page - 1) * size;
+//     const resultsdb = mongoose.connection.useDb("apinetdb");
+//     const upresults = mongoose.connection.useDb("apinet_results");
+//     const Results = resultsdb.model(table, DomainSchema);
+//     let isgenes;
+  
+  
+//   let genes; // Initialize genes to an empty string
+//   let species;
+
+//   if (body.searchType ==='keyword'){
+    
+//     if (body.ids ==='host'){
+//       species = body.host.toLowerCase()
+//     }
+//     else{
+//       species = body.pathogen.toLowerCase()
+//     }
+//     console.log(species)
+//     if (body.anotType === 'go'){
+//       const query = {
+//         $or: [
+          
+//           { "gene": { $regex: body.keyword, $options: "i"} },
+//           { "term": { $regex: body.keyword, $options: "i"} },
+//           { "description": { $regex: body.keyword, $options: "i"} },
+//           { "definition": { $regex: body.keyword, $options: "i" } },
+//           { "evidence": { $regex: body.keyword, $options: "i"} },
+//           { "ontology": { $regex: body.keyword, $options: "i" } },
+          
+//         ],
+//         'species':{$regex: species, $options: "i"}
+//       }
+
+//       keyword_data = await GO[body.ids].find(query)
+      
+//       const geneArray = keyword_data.map(obj => obj.gene);
+//       console.log(geneArray.length)
+//       genes = geneArray.join(',');
+      
+//     }
+//     if (body.anotType === 'local'){
+//       const query = {
+//         $or: [
+          
+//           { "gene": { $regex: body.keyword, $options: "i"} },
+//           { "location": { $regex: body.keyword, $options: "i"} },
+          
+//         ],
+//         'species':{$regex: species, $options: "i"}
+//       }
+
+//       keyword_data = await Local[body.ids].find(query)
+      
+//       const geneArray = keyword_data.map(obj => obj.gene);
+//       console.log(geneArray.length)
+//       genes = geneArray.join(',');
+      
+//     }
+//     if (body.anotType === 'pathway'){
+//       const query = {
+//         $or: [
+          
+//           { "gene": { $regex: body.keyword, $options: "i"} },
+//           { "pathway": { $regex: body.keyword, $options: "i"} },
+//           { "description": { $regex: body.keyword, $options: "i"} }
+          
+//         ],
+//         'species':{$regex: species, $options: "i"}
+//       }
+
+//       keyword_data = await KEGG[body.ids].find(query)
+      
+//       const geneArray = keyword_data.map(obj => obj.gene);
+//       console.log(geneArray.length)
+//       genes = geneArray.join(',');
+      
+//     }
+//     if (body.anotType === 'tf'){
+//       const query = {
+//         $or: [
+          
+//           { "gene": { $regex: body.keyword, $options: "i"} },
+//           { "tf_family": { $regex: body.keyword, $options: "i"} }
+        
+//         ],
+//         'species':{$regex: species, $options: "i"}
+//       }
+
+//       keyword_data = await TF[body.ids].find(query)
+      
+//       const geneArray = keyword_data.map(obj => obj.gene);
+//       console.log(geneArray.length)
+//       genes = geneArray.join(',');
+      
+//     }
+
+//     if (body.anotType === 'interpro') {
+//       const isInteger = Number.isInteger(parseInt(body.keyword));
+//       const query = {
+//           $or: [
+//               { "gene": { $regex: body.keyword, $options: 'i' } },
+//               { "interpro_id": { $regex: body.keyword, $options: 'i' } },
+//               { "sourcedb": { $regex: body.keyword, $options: 'i' } },
+//               { "domain": { $regex: body.keyword, $options: 'i' } },
+//               { "domain_description": { $regex: body.keyword, $options: 'i' } }
+//           ],
+//           'species': { $regex: species, $options: "i" }
+//       };
+  
+//       if (isInteger) {
+//           query.$or.push({ "length": parseInt(body.keyword) });
+//       }
+  
+//       keyword_data = await Interpro[body.ids].find(query);
+  
+//       const geneArray = keyword_data.map(obj => obj.gene);
+//       // console.log(geneArray.length);
+//       genes = geneArray.join(',');
+//   }
+  
+//     if (body.anotType === 'virulence'){
+//       const query = {
+//         $or: [
+          
+//           { "gene": { $regex: body.keyword, $options: "i"} },
+//           { "description": { $regex: body.keyword, $options: "i"} },
+//           { "type": { $regex: body.keyword, $options: "i"} },
+//         ],
+//         'species':{$regex: species, $options: "i"}
+//       }
+
+//       keyword_data = await Effector[body.ids].find(query)
+      
+//       const geneArray = keyword_data.map(obj => obj.gene);
+//       // console.log(geneArray.length)
+//       genes = geneArray.join(',');
+      
+//     }
+//   }
+//   else{
+
+//     genes = body.genes || ''
+    
+//   }
+
+
+//     const query = { intdb: { $in: body.intdb } };
+
+//     if (genes.length !==0 | body.keyword ) {
+//       if (body.idt === 'host') {
+//         query.Host_Protein = { $in: genes };
+//       } else if (body.idt === 'pathogen') {
+//         query.Pathogen_Protein = { $in: genes};
+//       }
+//     }
+//    console.log(query)
+//     const [final, counts, hostProtein, pathogenProtein] = await Promise.all([
+//       Results.find(query).limit(limit).skip(skip).lean().exec(),
+//       Results.count(query),
+//       Results.distinct("Host_Protein", query),
+//       Results.distinct("Pathogen_Protein", query)
+//     ]);
+    
+
+//     const timestamp = new Date().getTime(); // Get current timestamp
+//     const tableName = `hpinet${timestamp}results`; // Construct table name with timestamp
+//     console.log(tableName)
+//     // Create a new MongoDB collection with the timestamp-based name
+//     const newCollection = upresults.collection(tableName);
+
+//   //   const finalArray = Array.isArray(final) ? final : [final];
+
+//   //   if (finalArray.some(item => typeof item !== 'object' || item === null)) {
+//   //     throw new Error('Invalid document found in final array');
+//   // }
+//   // console.log(finalArray)
+//     // Insert the data into the new collection
+//     await newCollection.insertMany(final);
+
+//     res.json({
+//       results: final,
+//       total: counts,
+//       hostcount: hostProtein.length,
+//       pathogencount: pathogenProtein.length,
+//       resultid: tableName
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ error: "An error occurred" });
+//   }
+// });
 
 
 router.route('/network/').get(async (req, res) => {
@@ -670,7 +693,7 @@ router.route('/network/').get(async (req, res) => {
 
 
 router.route('/go/').get(async (req, res) => {
-
+  console.log(req.query)
   let { species, sptype, page, size } = req.query;
   
   // Default values for page and size
